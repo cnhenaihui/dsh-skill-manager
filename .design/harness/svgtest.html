@@ -1,0 +1,12 @@
+﻿<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;padding:20px;font-size:20px} .box{color:#8b929e;padding:10px;border:1px solid #ddd;margin:8px}</style></head>
+<body>
+<div class="box" id="a">before <span id="slot"></span> after</div>
+<script src="mini-react.js"></script>
+<script>
+const MR = window.MiniReact;
+const svg = (paths, size) => MR.createElement('svg', {width:size,height:size,viewBox:'0 0 16 16',fill:'none',stroke:'currentColor','stroke-width':'1.2','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}, paths.map((d,i)=>MR.createElement('path',{key:i,d})));
+function Demo(){ return MR.createElement('span', null, svg(['M6 4l4 4-4 4'], 11), ' text ', svg(['M13 8a5 5 0 1 1-1.47-3.54','M13.2 2.9v2.5h-2.5'], 14)); }
+MR.render(Demo, document.getElementById('slot'));
+setTimeout(()=>{ document.title = document.getElementById('slot').innerHTML.slice(0,300); }, 100);
+</script>
+</body></html>

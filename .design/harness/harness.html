@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>技能管理 · 运行时验证</title>
+<link rel="stylesheet" href="harness.css" />
+</head>
+<body>
+<div id="errors"></div>
+<div id="root"></div>
+<script src="mini-react.js"></script>
+<script>
+  /* ---- 运行时错误浮层 ---- */
+  const errors = document.getElementById('errors');
+  window.__harnessError = (error) => {
+    const box = document.createElement('pre');
+    box.className = 'err';
+    box.textContent = (error && (error.stack || error.message)) || String(error);
+    errors.appendChild(box);
+    console.error(error);
+  };
+  window.addEventListener('error', (event) => window.__harnessError(event.error || event.message));
+  window.addEventListener('unhandledrejection', (event) => window.__harnessError(event.reason));
+
+  /* ---- 模块装载：client.js 通过 window.__ModuleLoader__.load 注册 ---- */
+  window.__ModuleLoader__ = {
+    load(registration) {
+      const mod = registration.factory((id) => (id === 'react' ? window.MiniReact : {}));
+      window.__plugin = mod;
+    },
+  };
+</script>
+
+<script>
+  /* ---- 假数据 + fetch ---- */
+  const SOURCE_A = { key: 'user-dsh', label: '~/.dsh/skills', rank: 100 };
+  const SOURCE_B = { key: 'profile-desktop', label: 'profile skills', rank: 300 };
+
+  const skills = [
+    {
+      name: 'code-review', dirName: 'code-review', sourceKey: SOURCE_A.key, sourceLabel: SOURCE_A.label, rank: 100,
+      kind: 'bundle', dir: 'C:/Users/me/.dsh/skills/code-review', path: 'C:/Users/me/.dsh/skills/code-review/SKILL.md',
+      bytes: 25190, fileCount: 8, description: '审查代码变更，按严重度输出可执行的修改清单', whenToUse: '用户要求 review 或提交前自检时',
+      policyId: 'enabled', policyLabel: '启用', followFile: false, filePolicyId: 'enabled', revisionCount: 3,
+      lastRevisionAt: Date.now() - 2 * 3600e3, lastRevisionTag: 'v1.2', shadowed: false, diagnostics: [],
+    },
+    {
+      name: 'baa-generator', dirName: 'baa-generator', sourceKey: SOURCE_B.key, sourceLabel: SOURCE_B.label, rank: 300,
+      kind: 'bundle', dir: 'C:/Users/me/.dsh/profiles/desktop/skills/baa-generator', path: 'C:/Users/me/.dsh/profiles/desktop/skills/baa-generator/SKILL.md',
+      bytes: 18342, fileCount: 4, description: '分阶段生成业务架构分析报告，作为 SRS 的业务依据', whenToUse: null,
+      policyId: 'disabled', policyLabel: '停用', followFile: false, filePolicyId: 'enabled', revisionCount: 5,
+      lastRevisionAt: Date.now() - 26 * 3600e3, lastRevisionTag: null, shadowed: false, diagnostics: [],
+    },
+    {
+      name: 'zh-helper', dirName: 'zh-helper', sourceKey: SOURCE_A.key, sourceLabel: SOURCE_A.label, rank: 100,
+      kind: 'bundle', dir: 'C:/ws/.dsh/skills/zh-helper', path: 'C:/ws/.dsh/skills/zh-helper/SKILL.md',
+      bytes: 2140, fileCount: 1, description: '中文写作助手：把口语改写成正式文档', whenToUse: null,
+      policyId: 'follow', policyLabel: '跟随文件', followFile: true, filePolicyId: 'follow', revisionCount: 0,
+      lastRevisionAt: null, lastRevisionTag: null, shadowed: true, shadowedBy: 'C:/Users/me/.dsh/skills/zh-helper/SKILL.md', diagnostics: [],
+    },
+    {
+      name: 'legacy-broken', dirName: 'legacy-broken', sourceKey: SOURCE_B.key, sourceLabel: SOURCE_B.label, rank: 300,
+      kind: 'bundle', dir: 'C:/Users/me/.dsh/profiles/desktop/skills/legacy-broken', path: 'C:/Users/me/.dsh/profiles/desktop/skills/legacy-broken/SKILL.md',
+      bytes: 990, fileCount: 1, description: '老的停用策略技能，frontmatter 用了废弃 camelCase 键', whenToUse: null,
+      policyId: 'follow', policyLabel: '跟随文件', followFile: true, filePolicyId: 'follow', revisionCount: 1,
+      lastRevisionAt: Date.now() - 5 * 86400e3, lastRevisionTag: null, shadowed: false,
+      diagnostics: [{ code: 'deprecated-key', message: 'disableModelInvocation 是旧键' }],
+    },
+  ];
+
+  const statusItems = [
+    { sourceKey: SOURCE_A.key, name: 'code-review', hasRevision: true, dirty: true, headRevision: 'a1b2c3d4e5f6', lastRevisionAt: Date.now() - 2 * 3600e3 },
+    { sourceKey: SOURCE_B.key, name: 'baa-generator', hasRevision: true, dirty: false, lastRevisionAt: Date.now() - 26 * 3600e3 },
+    { sourceKey: SOURCE_A.key, name: 'zh-helper', hasRevision: false, dirty: null },
+    { sourceKey: SOURCE_B.key, name: 'legacy-broken', hasRevision: true, dirty: false, error: 'EACCES: 无法读取目录' },
+  ];
+
+  const revisions = [
+    { contentHash: 'a1b2c3d4e5f60718', at: Date.now() - 2 * 3600e3, fileCount: 8, tag: 'v1.2', note: '补充严重度分级' },
+    { contentHash: '9f8e7d6c5b4a3021', at: Date.now() - 26 * 3600e3, fileCount: 7, tag: null, note: null },
+    { contentHash: '1122334455667788', at: Date.now() - 3 * 86400e3, fileCount: 6, tag: null, note: '初始基线' },
+  ];
+
+  const detail = {
+    skill: skills[0],
+    parsed: { description: skills[0].description, whenToUse: skills[0].whenToUse, extraKeys: ['version'] },
+    parseError: null,
+    content: '---\nname: code-review\ndescription: 审查代码变更，按严重度输出可执行的修改清单\nversion: 1.2\n---\n\n# code-review\n\n按严重度输出问题清单。',
+    revisions,
+    files: { revisionId: revisions[0].contentHash, files: [], totalBytes: 25190 },
+    current: { sha256: 'ffff', totalBytes: 25190, fileCount: 8, headRevision: revisions[0].contentHash, matchesHead: false, dirty: true },
+  };
+
+  const listPayload = {
+    scannedAt: Date.now(),
+    roots: [
+      { key: SOURCE_A.key, label: SOURCE_A.label, rank: 100, dir: 'C:/Users/me/.dsh/skills', managed: true, exists: true },
+      { key: SOURCE_B.key, label: SOURCE_B.label, rank: 300, dir: 'C:/Users/me/.dsh/profiles/desktop/skills', managed: true, exists: true },
+    ],
+    skills,
+    invalid: [
+      { sourceKey: SOURCE_B.key, sourceLabel: SOURCE_B.label, dir: 'C:/x/skills/legacy', path: 'C:/x/skills/legacy/SKILL.md', code: 'bad-key', key: 'disableModelInvocation', message: '使用了已废弃的 camelCase 键 disableModelInvocation' },
+      { sourceKey: SOURCE_A.key, sourceLabel: SOURCE_A.label, dir: 'C:/x/skills/old', path: 'C:/x/skills/old.md', code: 'parse', message: 'frontmatter 缺少结束分隔符 ---' },
+    ],
+    warnings: [],
+    official: { available: true, complete: true, count: 3, items: [{ name: 'zh-helper', kind: 'disk-only', detail: '磁盘上存在，但官方目录里没有（被同名高优先级技能遮蔽）' }] },
+    overlay: { global: true, scopes: 2, active: [], warnings: [] },
+  };
+
+  const json = (body) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+
+  window.fetch = (url, options) => {
+    const target = String(url);
+    if (target.includes('.list')) return json(listPayload);
+    if (target.includes('.status')) return json({ ok: true, counts: {}, items: statusItems });
+    if (target.includes('.detail')) return json(detail);
+    if (target.includes('.compare')) {
+      if (target.includes('path=')) return json({ path: 'SKILL.md', status: 'changed', diff: '--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,4 +1,4 @@\n ---\n name: code-review\n-description: 旧描述\n+description: 审查代码变更，按严重度输出可执行的修改清单\n whenToUse: 提交前\n ---' });
+      return json({ added: [{ path: 'references/severity.md' }], changed: [{ path: 'SKILL.md' }], removed: [{ path: 'notes.md' }], identical: false });
+    }
+    if (target.includes('.policy')) return json({ ok: true, policyLabel: '启用', note: '' });
+    if (target.includes('.capture')) return json({ ok: true, created: true, contentHash: 'abc123456789' });
+    if (target.includes('.restore')) return json({ ok: true, restored: true, backupRevision: 'zzz' });
+    if (target.includes('.annotate')) return json({ ok: true });
+    if (target.includes('.baseline')) return json({ ok: true, created: 1, unchanged: 0, failed: [] });
+    if (target.includes('.import')) return json({ ok: true, targetDir: 'C:/Users/me/.dsh/skills', manifest: {}, problems: [], plan: { summary: { create: 1, overwrite: 0, rename: 0, skip: 0, invalid: 0 }, actions: [{ name: 'code-review', kind: 'create', to: 'code-review', problems: [] }] }, written: [] });
+    return json({ ok: true });
+  };
+</script>
+
+<script src="../../client.js"></script>
+<script>
+  const ctx = {
+    slots: {
+      inject(name, register) {
+        const dispose = register();
+        return typeof dispose === 'function' ? dispose : () => {};
+      },
+      register(options, component) {
+        window.__panel = component;
+        return () => {};
+      },
+    },
+  };
+  window.__plugin.apply(ctx);
+  window.MiniReact.render(window.__panel, document.getElementById('root'));
+
+  /* 首屏数据到达后自动展开第一行，验证展开态的真实渲染 */
+  setTimeout(() => {
+    const rows = document.querySelectorAll('.skm-row-main');
+    if (rows[0]) rows[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  }, 250);
+</script>
+</body>
+</html>

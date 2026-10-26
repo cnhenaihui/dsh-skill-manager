@@ -1,0 +1,40 @@
+{
+  "name": "@local/dsh-skill-manager",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH 技能管理插件：技能注册、技能介绍、导出 zip 包、版本跟踪、停用/启用（零运行时依赖）",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/",
+    "client.js",
+    "cordis.patch.yml",
+    "scripts/",
+    "test/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0-rc.2 <0.3.0"
+  },
+  "dsh": {
+    "compatibility": {
+      "dsh": ">=0.2.0-rc.2 <0.3.0"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  }
+}

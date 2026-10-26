@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>技能管理 · 精简版样张</title>
+<style>
+  :root {
+    --label-primary: #1f2329;
+    --label-secondary: #5c6370;
+    --label-tertiary: #8b929e;
+    --border-l1: #eceef1;
+    --border-l2: #e2e5ea;
+    --border-l3: #d5d9e0;
+    --bg-layer-1: #f7f8fa;
+    --bg-layer-2: #eef0f4;
+    --hover: rgba(20, 24, 32, 0.05);
+    --brand: #4d6bfe;
+    --brand-fg: #ffffff;
+    --ok: #16a34a;
+    --warn: #c2740a;
+    --err: #dc2626;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --label-primary: #e9ecf2;
+      --label-secondary: #a3abb8;
+      --label-tertiary: #7d8694;
+      --border-l1: #262b33;
+      --border-l2: #313742;
+      --border-l3: #3d4450;
+      --bg-layer-1: #171a1f;
+      --bg-layer-2: #21262e;
+      --hover: rgba(255, 255, 255, 0.07);
+      --ok: #4ade80;
+      --warn: #f0b429;
+      --err: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px 24px 40px; background: var(--bg-layer-1); color: var(--label-primary); font: 13px/1.55 var(--sans); }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .panel { background: color-mix(in srgb, var(--label-primary) 1.5%, transparent); border-radius: 12px; padding: 18px 20px 22px; }
+
+  /* ---------- 页头 ---------- */
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .head h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .01em; }
+  .head .meta { margin: 3px 0 0; font-size: 11.5px; color: var(--label-tertiary); }
+  .head-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+
+  /* ---------- 控件 ---------- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; padding: 0 10px; border: none; border-radius: var(--radius-sm); background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: var(--hover); }
+  .btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+  .btn.outline { border: .5px solid var(--border-l3); }
+  .btn.primary { background: var(--brand); color: var(--brand-fg); }
+  .btn.icon-only { width: 28px; padding: 0; color: var(--label-secondary); }
+  .btn svg { flex: none; }
+  .btn.quiet { color: var(--label-secondary); }
+  .btn.danger:hover { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }
+
+  .toolbar { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; flex-wrap: wrap; }
+  .search { flex: 1 1 200px; min-width: 160px; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; border: .5px solid var(--border-l2); border-radius: var(--radius-sm); color: var(--label-tertiary); background: transparent; }
+  .search:focus-within { border-color: var(--brand); }
+  .search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: var(--label-primary); font: inherit; font-size: 12.5px; }
+  .search input::placeholder { color: var(--label-tertiary); }
+  select.seg { height: 30px; border: .5px solid var(--border-l2); border-radius: var(--radius-sm); background: transparent; color: var(--label-secondary); font: inherit; font-size: 12px; padding: 0 6px; }
+  .spacer { flex: 1; }
+
+  /* ---------- 提示条 ---------- */
+  .banner { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; padding: 9px 12px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); font-size: 12px; }
+  .banner .grow { flex: 1; color: var(--label-secondary); }
+  .banner strong { color: var(--warn); }
+
+  /* ---------- 列表 ---------- */
+  .list { list-style: none; margin: 14px 0 0; padding: 0; border-top: .5px solid var(--border-l1); }
+  .row { border-bottom: .5px solid var(--border-l1); }
+  .row-line { display: flex; align-items: flex-start; gap: 8px; padding: 9px 2px; }
+  .row-line:hover { background: color-mix(in srgb, var(--label-primary) 2%, transparent); border-radius: var(--radius-sm); }
+  .check { margin: 3px 0 0 2px; width: 14px; height: 14px; accent-color: var(--brand); flex: none; cursor: pointer; }
+  .main { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 7px; padding: 0; border: none; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .main:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: var(--radius-sm); }
+  .chev { flex: none; margin-top: 2px; color: var(--label-tertiary); transition: transform .15s ease; }
+  .row.open .chev { transform: rotate(90deg); }
+  .skicon { flex: none; margin-top: 1px; color: var(--label-secondary); }
+  .body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .title-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .title { font-size: 13px; font-weight: 600; }
+  .desc { color: var(--label-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .meta-line { color: var(--label-tertiary); font-size: 11px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--label-tertiary); display: inline-block; }
+  .dot.warn { background: var(--warn); }
+  .dot.ok { background: var(--ok); }
+  .side { display: flex; align-items: center; gap: 6px; flex: none; padding-top: 1px; }
+  .chip { height: 22px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border: .5px solid var(--border-l2); border-radius: 999px; background: transparent; color: var(--label-secondary); font: inherit; font-size: 11.5px; cursor: pointer; }
+  .chip:hover { background: var(--hover); }
+  .chip.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--border-l2)); }
+  .chip.off { color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, var(--border-l2)); }
+  .chip.soft { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--border-l2)); }
+
+  /* ---------- 展开区 ---------- */
+  .detail { margin: 0 0 10px 26px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--bg-layer-2); }
+  .detail .lede { margin: 0 0 8px; color: var(--label-secondary); font-size: 12px; }
+  .kv { display: grid; grid-template-columns: 56px 1fr; gap: 3px 8px; margin: 0 0 10px; font-size: 11.5px; }
+  .kv dt { color: var(--label-tertiary); }
+  .kv dd { margin: 0; color: var(--label-secondary); font-family: var(--mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .acts .sep { flex: 1; }
+  .vhead { display: flex; align-items: baseline; gap: 6px; margin: 14px 0 4px; font-size: 12px; font-weight: 600; }
+  .vhead span { color: var(--label-tertiary); font-weight: 400; font-size: 11px; }
+  .versions { list-style: none; margin: 0; padding: 0; max-height: 178px; overflow: auto; }
+  .rev { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 6px; border: none; border-top: .5px solid var(--border-l1); background: transparent; color: inherit; font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; border-radius: 4px; }
+  .rev:first-child { border-top: none; }
+  .rev:hover { background: var(--hover); }
+  .rev[aria-selected="true"] { background: var(--bg-layer-1); box-shadow: inset 0 0 0 1px var(--border-l3); }
+  .rev:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+  .hash { font-family: var(--mono); font-size: 11px; color: var(--label-secondary); flex: none; }
+  .badge { font-size: 10px; padding: 0 5px; border-radius: 4px; background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); flex: none; }
+  .vt { color: var(--label-tertiary); flex: none; }
+  .vnote { color: var(--label-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .selbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; padding: 7px 8px; border: .5px solid var(--border-l2); border-radius: var(--radius-sm); font-size: 11.5px; color: var(--label-secondary); }
+  .selbar .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini { height: 22px; padding: 0 6px; font-size: 11px; border-radius: 4px; border: none; background: transparent; color: var(--label-secondary); cursor: pointer; }
+  .mini:hover { background: var(--hover); color: var(--label-primary); }
+  .mini:disabled { opacity: .4; cursor: not-allowed; }
+  .anno { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .anno input { height: 24px; min-width: 90px; flex: 1 1 100px; padding: 0 7px; border: .5px solid var(--border-l2); border-radius: 4px; background: transparent; color: var(--label-primary); font: inherit; font-size: 11.5px; }
+  details.raw { margin-top: 10px; }
+  details.raw summary { cursor: pointer; color: var(--label-secondary); font-size: 11.5px; }
+  details.raw pre { margin: 6px 0 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-layer-1); color: var(--label-secondary); font: 11px/1.55 var(--mono); white-space: pre-wrap; max-height: 240px; overflow: auto; }
+  code.inline { font-family: var(--mono); font-size: 11px; }
+
+  /* ---------- 底部诊断 ---------- */
+  .diag { margin-top: 16px; border-top: .5px solid var(--border-l1); padding-top: 10px; }
+  .diag summary { cursor: pointer; color: var(--label-secondary); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .diag summary::-webkit-details-marker { display: none; }
+  .diag .count { color: var(--warn); }
+  .diag .dbody { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+  .diag h3 { margin: 0 0 4px; font-size: 12px; font-weight: 600; }
+  .diag p { margin: 0; color: var(--label-tertiary); font-size: 11px; }
+  .diag ul { list-style: none; margin: 4px 0 0; padding: 0; }
+  .diag li { padding: 4px 0; border-top: .5px solid var(--border-l1); font-size: 11.5px; color: var(--label-secondary); display: flex; gap: 6px; align-items: baseline; }
+  .diag li code { color: var(--label-primary); font-family: var(--mono); font-size: 11px; flex: none; }
+  .tag-err { flex: none; font-size: 10px; padding: 0 5px; border-radius: 4px; background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+
+  /* ---------- 空态 ---------- */
+  .empty { padding: 34px 0; text-align: center; color: var(--label-tertiary); font-size: 12px; }
+  .empty .btn { margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel">
+
+    <header class="head">
+      <div>
+        <h1>技能管理</h1>
+        <p class="meta">12 个技能 · 2 个有未捕获改动 · 扫描于 10-21 09:03</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn outline"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M8 11V3m0 0L5 6m3-3l3 3"/><path d="M3 10v2.5A1.5 1.5 0 004.5 14h7a1.5 1.5 0 001.5-1.5V10"/></svg>导入</button>
+        <button class="btn outline"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M8 5v8m0 0l3-3m-3 3L5 10"/><path d="M3 3.5h10"/></svg>导出全部</button>
+        <button class="btn icon-only" title="刷新列表" aria-label="刷新列表"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M13 8a5 5 0 11-1.6-3.7"/><path d="M13 3v2.6h-2.6"/></svg></button>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <label class="search">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="7" cy="7" r="4"/><path d="M10 10l3 3"/></svg>
+        <input placeholder="搜索技能名或描述" />
+      </label>
+      <select class="seg" aria-label="筛选">
+        <option>全部 12</option><option>已启用 7</option><option>已停用 2</option><option>有问题 2</option>
+      </select>
+      <span class="spacer"></span>
+      <button class="btn quiet">导出选中（2）</button>
+    </div>
+
+    <div class="banner">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M8 5.5v3.5M8 11.2v.3"/><circle cx="8" cy="8" r="6"/></svg>
+      <span class="grow"><strong>3 个技能还没有版本基线</strong>，建立后任何一次改坏都能一键回滚。</span>
+      <button class="btn outline" style="color:inherit;border-color:currentColor">建立基线</button>
+    </div>
+
+    <ul class="list">
+      <!-- 行 1：正常，已展开 -->
+      <li class="row open">
+        <div class="row-line">
+          <input class="check" type="checkbox" checked aria-label="选择 code-review" />
+          <button class="main" aria-expanded="true">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 4l4 4-4 4"/></svg></span>
+            <span class="body">
+              <span class="title-line"><span class="title">code-review</span></span>
+              <span class="desc">审查代码变更，按严重度输出可执行的修改清单</span>
+              <span class="meta-line"><span>~/.dsh/skills</span><span>·</span><span>3 版</span><span>·</span><span>2 小时前</span><span class="dot warn" title="有未捕获改动"></span><span>未捕获改动</span></span>
+            </span>
+          </button>
+          <span class="side">
+            <button class="chip on">启用 <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 6l4 4 4-4"/></svg></button>
+          </span>
+        </div>
+
+        <div class="detail">
+          <p class="lede">策略「启用」：模型与用户都可用。策略变化在下一个模型步生效。</p>
+          <dl class="kv">
+            <dt>路径</dt><dd>C:\Users\me\.dsh\skills\code-review\SKILL.md</dd>
+            <dt>体积</dt><dd>8 个文件 · 24.6 KB</dd>
+            <dt>状态</dt><dd style="font-family:inherit">有未捕获的改动（磁盘与最新版本不一致）</dd>
+          </dl>
+          <div class="acts">
+            <button class="btn primary">捕获当前为新版本</button>
+            <button class="btn outline">查看改动</button>
+            <button class="btn">导出 zip</button>
+          </div>
+
+          <div class="vhead">版本历史 <span>3 个修订</span></div>
+          <ul class="versions">
+            <li><button class="rev" aria-selected="true">
+              <span class="hash">a1b2c3d4e5</span><span class="badge">最新</span>
+              <time class="vt">10-21 07:12</time><span class="vnote">v1.2 · 补充严重度分级</span>
+            </button></li>
+            <li><button class="rev" aria-selected="false">
+              <span class="hash">9f8e7d6c5b</span>
+              <time class="vt">10-20 15:40</time><span class="vnote">—</span>
+            </button></li>
+            <li><button class="rev" aria-selected="false">
+              <span class="hash">1122334455</span>
+              <time class="vt">10-18 09:02</time><span class="vnote">初始基线</span>
+            </button></li>
+          </ul>
+          <div class="selbar">
+            <span class="what">已选 <code class="inline">a1b2c3d4e5</code></span>
+            <button class="mini" disabled>对比最新</button>
+            <button class="mini">导出</button>
+            <button class="mini" disabled>回滚到此版本</button>
+            <button class="mini">加备注</button>
+          </div>
+          <details class="raw"><summary>查看 SKILL.md 原文</summary><pre>---
+name: code-review
+description: 审查代码变更，按严重度输出可执行的修改清单
+---</pre></details>
+        </div>
+      </li>
+
+      <!-- 行 2：停用 -->
+      <li class="row">
+        <div class="row-line">
+          <input class="check" type="checkbox" aria-label="选择 baa-generator" />
+          <button class="main" aria-expanded="false">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 4l4 4-4 4"/></svg></span>
+            <span class="body">
+              <span class="title-line"><span class="title">baa-generator</span></span>
+              <span class="desc">分阶段生成业务架构分析报告，作为 SRS 的业务依据</span>
+              <span class="meta-line"><span>~/.dsh/profiles/desktop/skills</span><span>·</span><span>5 版</span><span>·</span><span>昨天</span><span class="dot ok"></span><span>与最新版本一致</span></span>
+            </span>
+          </button>
+          <span class="side">
+            <button class="chip off">已停用 <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 6l4 4 4-4"/></svg></button>
+          </span>
+        </div>
+      </li>
+
+      <!-- 行 3：诊断 -->
+      <li class="row">
+        <div class="row-line">
+          <input class="check" type="checkbox" aria-label="选择 broken-skill" />
+          <button class="main" aria-expanded="false">
+            <span class="chev"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 4l4 4-4 4"/></svg></span>
+            <span class="body">
+              <span class="title-line"><span class="title">zh-helper</span><span class="badge" style="background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)">被遮蔽</span></span>
+              <span class="desc">中文写作助手：把口语改写成正式文档</span>
+              <span class="meta-line"><span>workspace/.dsh/skills</span><span>·</span><span>无版本</span></span>
+            </span>
+          </button>
+          <span class="side">
+            <button class="chip soft">跟随文件 <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 6l4 4 4-4"/></svg></button>
+          </span>
+        </div>
+      </li>
+    </ul>
+
+    <details class="diag">
+      <summary>
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 4l4 4-4 4"/></svg>
+        诊断 <span class="count">2 条被官方静默丢弃 · 1 处目录差异</span>
+      </summary>
+      <div class="dbody">
+        <div>
+          <h3>被官方静默丢弃的条目</h3>
+          <p>官方 dsh-skill-filesystem 遇到非法 frontmatter 会直接跳过且不报错。</p>
+          <ul>
+            <li><span class="tag-err">bad-key</span><code>skills/legacy/SKILL.md</code><span>使用了已废弃的 camelCase 键 disableModelInvocation</span></li>
+            <li><span class="tag-err">parse</span><code>skills/old.md</code><span>frontmatter 缺少结束分隔符 ---</span></li>
+          </ul>
+        </div>
+        <div>
+          <h3>磁盘清单与官方目录的差异</h3>
+          <ul>
+            <li><code>zh-helper</code><span>磁盘上存在，但官方目录里没有（被同名高优先级技能遮蔽）</span></li>
+          </ul>
+        </div>
+      </div>
+    </details>
+
+  </div>
+</div>
+</body>
+</html>

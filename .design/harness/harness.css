@@ -1,0 +1,53 @@
+/* 宿主令牌的近似值（仅用于本地验证插件在真实令牌下的表现） */
+:root {
+  --dsw-alias-label-primary: #1f2329;
+  --dsw-alias-label-secondary: #5c6370;
+  --dsw-alias-label-tertiary: #8b929e;
+  --dsw-alias-label-primary-foreground: #ffffff;
+  --dsw-alias-border-l1: #eceef1;
+  --dsw-alias-border-l2: #e2e5ea;
+  --dsw-alias-border-l3: #d5d9e0;
+  --dsw-alias-bg-layer-1: #f7f8fa;
+  --dsw-alias-bg-layer-2: #eef0f4;
+  --dsw-alias-bg-module-platform: #ffffff;
+  --dsw-alias-interactive-bg-hover: rgba(20, 24, 32, 0.05);
+  --dsw-alias-button-primary-fill: #4d6bfe;
+  --dsw-alias-button-primary-hover: #3f5ce8;
+  --dsw-alias-state-success-primary: #16a34a;
+  --dsw-alias-state-warn-primary: #c2740a;
+  --dsw-alias-state-error-primary: #dc2626;
+  --dsw-radius-sm: 6px;
+  --dsw-radius-md: 8px;
+  --dsw-elevation-prominent: 0 10px 32px rgba(16, 20, 28, 0.18);
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 22px 26px 40px;
+  background: #f2f3f5;
+  color: var(--dsw-alias-label-primary);
+}
+
+#root {
+  background: var(--dsw-alias-bg-module-platform);
+  border-radius: 12px;
+  padding: 18px 20px 22px;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+#errors {
+  max-width: 860px;
+  margin: 0 auto 12px;
+}
+
+#errors .err {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fdecea;
+  color: #b3261e;
+  font: 11px/1.5 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+}

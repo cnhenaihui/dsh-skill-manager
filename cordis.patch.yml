@@ -1,0 +1,10 @@
+# dsh-skill-manager 的组合包自挂载补丁。
+#
+# 本插件刻意不声明任何 @deepseek-ai/dsh-* 的 peerDependencies：
+# 宿主 dsh-app-boot 的 evaluatePluginCompatibility 会对每个官方 dsh peer 做
+# semver.satisfies(runtime, range, { includePrerelease: true })，出范围即拒装/拒载。
+# 本插件通过 ctx 服务名（skills / connection / webServer）在运行时取用官方能力，
+# 不需要 import 任何官方包，因此保持零依赖、零 peer 是最稳的安装路径。
+- insert:
+    - id: skill-manager
+      name: '@local/dsh-skill-manager'
