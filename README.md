@@ -31,7 +31,7 @@ DSH 技能管理插件：**技能注册、技能介绍、导出 zip 包、版本
 ```powershell
 # 1) 建 junction（零依赖，不需要 pnpm install）
 $link   = "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\@local\dsh-skill-manager"
-$target = "(Resolve-Path .).Path"
+$target = (Resolve-Path .).Path   # 本仓库根目录，请在该目录下执行
 New-Item -ItemType Junction -Path $link -Target $target
 
 # 2) 往 profile 的 patch 层追加一段 insert（追加到 ~/.dsh/profiles/desktop/cordis.patch.yml 末尾）

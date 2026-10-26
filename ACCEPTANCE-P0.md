@@ -59,7 +59,7 @@ Expand-Archive: ok=39 mismatch=0 missing=0
 插件自己的数据目录此时只有 109 字节的 `state.json`（空覆盖表，0 条策略）：
 
 ```
-~/.dsh/skill-manager\state.json    109
+~/.dsh/skill-manager/state.json    109
 ```
 
 即：插件不写技能库、只写自己的数据目录；导出/导入/回滚/停用全过程对 `~/.dsh/skills` 零改动。
