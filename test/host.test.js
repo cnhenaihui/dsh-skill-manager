@@ -48,8 +48,9 @@ export default function register(t) {
     const body = await res.json();
     assert.equal(body.ok, true);
     assert.ok(body.routes.includes('/api/skill-manager.list'));
+    assert.ok(body.routes.includes('/api/skill-manager.layout'));
     assert.ok(body.policies.includes('disabled'));
-    assert.equal(body.routes.length, 13);
+    assert.equal(body.routes.length, 14);
   });
 
   t('list：磁盘真源 + 策略/版本字段 + 与官方目录对照', async () => {
@@ -334,5 +335,144 @@ export default function register(t) {
     assert.equal(info.active.length, 1);
     assert.equal(info.active[0].ok, false);
     assert.ok(info.warnings.length >= 1, '应记录"源文件不存在"的告警');
+  });
+
+  /* ---------------- 分组与排序 ---------------- */
+
+  t('registerRoutes：ROUTES 里的每条路径都真的被注册了', async () => {
+    /*
+     * 这条用例的存在理由：曾经给 ROUTES 加了 layout、给 createHandlers 加了 handler，
+     * 却漏了 registerRoutes 里那张表。所有测试都直接调 handlers.layout，因此全绿；
+     * 而真实宿主按表注册，那条路由根本不存在，界面上表现为永远 HTTP 404。
+     * 断言"表 ⊇ ROUTES"才能在离线阶段抓住这种错位。
+     */
+    const registered = [];
+    const fakeCtx = {
+      connection: {
+        fetch: {
+          register(entry) {
+            registered.push({ path: entry.path, methods: entry.methods });
+            return () => {};
+          },
+        },
+      },
+      logger: { error: () => {}, warn: () => {} },
+    };
+    const { registerRoutes } = await import('../lib/routes.js');
+    const base = await makeTempDir('routes-table');
+    registerRoutes(fakeCtx, {
+      dataDir: base,
+      policy: createPolicyStore({ dataDir: path.join(base, 'policy') }),
+      store: createRevisionStore({ dataDir: path.join(base, 'store') }),
+      rootsOf: () => [],
+    });
+
+    const expected = Object.values(ROUTES).sort();
+    const actual = registered.map((r) => r.path).sort();
+    assert.deepEqual(actual, expected, `注册表与 ROUTES 不一致\n注册：${actual.join(', ')}\n应为：${expected.join(', ')}`);
+
+    for (const entry of registered) {
+      assert.ok(Array.isArray(entry.methods) && entry.methods.length > 0, `${entry.path} 没有声明方法`);
+      for (const method of entry.methods) {
+        assert.ok(['GET', 'POST'].includes(method), `${entry.path} 出现意外方法 ${method}`);
+      }
+    }
+  });
+
+  t('registerRoutes：layout 同时接受 GET 与 POST', async () => {
+    const registered = [];
+    const fakeCtx = {
+      connection: { fetch: { register(entry) { registered.push(entry); return () => {}; } } },
+      logger: { error: () => {}, warn: () => {} },
+    };
+    const { registerRoutes } = await import('../lib/routes.js');
+    const base = await makeTempDir('layout-methods');
+    registerRoutes(fakeCtx, {
+      dataDir: base,
+      policy: createPolicyStore({ dataDir: path.join(base, 'p') }),
+      store: createRevisionStore({ dataDir: path.join(base, 's') }),
+      rootsOf: () => [],
+    });
+    const entry = registered.find((r) => r.path === ROUTES.layout);
+    assert.ok(entry, 'layout 必须被注册');
+    assert.deepEqual([...entry.methods].sort(), ['GET', 'POST']);
+  });
+
+  t('layout：list 随清单下发空布局', async () => {
+    const { handlers, get } = await setupHost('host-layout-empty');
+    const body = await (await handlers.list(get(ROUTES.list))).json();
+    assert.deepEqual(body.layout, { version: 1, groups: [], assignments: {}, order: [] });
+  });
+
+  t('layout：GET 读、POST 写，双向一致', async () => {
+    const { handlers, get, post } = await setupHost('host-layout-rw');
+    const put = await handlers.layout(
+      post(ROUTES.layout, {
+        groups: [{ name: '工具类' }, { name: '流程类' }],
+        assignments: { 'user-dsh::alpha': null },
+        order: ['user-dsh::beta', 'user-dsh::alpha'],
+      }),
+    );
+    assert.equal(put.status, 200);
+    const saved = (await put.json()).layout;
+    assert.deepEqual(saved.groups.map((g) => g.name), ['工具类', '流程类']);
+    assert.deepEqual(saved.order, ['user-dsh::beta', 'user-dsh::alpha']);
+
+    const read = await (await handlers.layout(get(ROUTES.layout))).json();
+    assert.deepEqual(read.layout, saved);
+
+    // list 也要带上同一份布局，界面才能一次请求画完
+    const listed = await (await handlers.list(get(ROUTES.list))).json();
+    assert.deepEqual(listed.layout, saved);
+  });
+
+  t('layout：技能→分组归属可写入并读回', async () => {
+    const { handlers, get, post } = await setupHost('host-layout-assign');
+    const first = (await (await handlers.layout(post(ROUTES.layout, { groups: [{ name: 'G' }] }))).json()).layout;
+    const gid = first.groups[0].id;
+    const res = await handlers.layout(post(ROUTES.layout, { assignments: { 'user-dsh::alpha': gid } }));
+    assert.equal(res.status, 200);
+    const layout = (await res.json()).layout;
+    assert.deepEqual(layout.assignments, { 'user-dsh::alpha': gid });
+  });
+
+  t('layout：拒绝非法请求体', async () => {
+    const { handlers, post } = await setupHost('host-layout-bad');
+    const cases = [
+      post(ROUTES.layout, {}),
+      post(ROUTES.layout, { groups: 'nope' }),
+      post(ROUTES.layout, { groups: [{ name: '  ' }] }),
+      post(ROUTES.layout, { groups: [{ id: 'not-prefixed', name: 'x' }] }),
+      post(ROUTES.layout, { groups: [{ id: 'g_a', name: 'x' }], assignments: { 'user-dsh::alpha': 'g_zzz' } }),
+      post(ROUTES.layout, { order: 'nope' }),
+    ];
+    for (const request of cases) {
+      const res = await handlers.layout(request);
+      assert.equal(res.status, 400, `应拒绝：${await res.clone().text()}`);
+    }
+  });
+
+  t('layout：不存在的技能不会被写进排序（清单为准）', async () => {
+    const { handlers, post } = await setupHost('host-layout-ghost');
+    const res = await handlers.layout(
+      post(ROUTES.layout, { order: ['user-dsh::alpha', 'user-dsh::ghost', 'user-dsh::beta'] }),
+    );
+    const layout = (await res.json()).layout;
+    assert.deepEqual(layout.order, ['user-dsh::alpha', 'user-dsh::beta']);
+  });
+
+  t('layout：改排序不影响策略，改策略不影响排序', async () => {
+    const { handlers, get, post } = await setupHost('host-layout-isolation');
+    await handlers.policy(post(ROUTES.policy, { sourceKey: 'user-dsh', name: 'alpha', policy: 'disabled' }));
+    await handlers.layout(post(ROUTES.layout, { order: ['user-dsh::beta', 'user-dsh::alpha'] }));
+
+    let body = await (await handlers.list(get(ROUTES.list))).json();
+    assert.equal(body.skills.find((s) => s.name === 'alpha').policyId, 'disabled', '策略仍在');
+    assert.deepEqual(body.layout.order, ['user-dsh::beta', 'user-dsh::alpha'], '排序仍在');
+
+    await handlers.policy(post(ROUTES.policy, { sourceKey: 'user-dsh', name: 'alpha', policy: 'follow' }));
+    body = await (await handlers.list(get(ROUTES.list))).json();
+    assert.equal(body.skills.find((s) => s.name === 'alpha').policyId, 'follow');
+    assert.deepEqual(body.layout.order, ['user-dsh::beta', 'user-dsh::alpha'], '排序没被策略操作清掉');
   });
 }

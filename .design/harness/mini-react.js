@@ -80,10 +80,18 @@
         });
         return;
       }
-      if (name === 'onClick' || name === 'onMouseDown' || name === 'onKeyDown' || name === 'onChange') {
-        const eventName = name === 'onChange' ? (/^(input|select|textarea)$/i.test(el.tagName) ? 'input' : 'change') : name.slice(2).toLowerCase();
-        el.addEventListener(eventName, value);
-        if (name === 'onChange') el.addEventListener('change', value);
+      // 所有 onXxx 都按 React 约定绑定成原生事件（去掉 on 前缀、转小写）。
+      // 早期只白名单了 4 个事件名，导致拖拽这类事件在测试台里根本不触发 ——
+      // 桩比真实实现严格会漏掉 bug，桩比真实实现宽松同样会漏。
+      if (/^on[A-Z]/.test(name) && typeof value === 'function') {
+        const base = name.slice(2).toLowerCase();
+        if (name === 'onChange') {
+          const eventName = /^(input|select|textarea)$/i.test(el.tagName) ? 'input' : 'change';
+          el.addEventListener(eventName, value);
+          el.addEventListener('change', value);
+          return;
+        }
+        el.addEventListener(base, value);
         return;
       }
       if (name === 'value') { el.value = value; return; }

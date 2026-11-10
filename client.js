@@ -13,7 +13,7 @@
  */
 
 window.__ModuleLoader__.load({
-  id: '@local/dsh-skill-manager',
+  id: '@cnhenaihui/dsh-skill-manager',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
@@ -32,6 +32,7 @@ window.__ModuleLoader__.load({
       import: '/api/skill-manager.import',
       baseline: '/api/skill-manager.baseline',
       status: '/api/skill-manager.status',
+      layout: '/api/skill-manager.layout',
     };
 
     const POLICIES = [
@@ -50,6 +51,51 @@ window.__ModuleLoader__.load({
       { id: 'missing', label: '未建基线' },
       { id: 'issue', label: '有提示' },
     ];
+
+    /** 虚拟组 id，与 lib/core/layout.js 的 UNGROUPED 保持一致。 */
+    const UNGROUPED = '__ungrouped';
+
+    /**
+     * 前端只做"把顺序算出来"，不做排序语义判断 —— 语义全在 lib/core/layout.js，
+     * 那里有离线测试覆盖。这里保留同一套纯函数的最小副本，是因为 Client 半
+     * 无法 import 宿主的 ESM 模块（浏览器侧没有文件系统）。
+     */
+    function sortKeysByOrder(keys, order) {
+      const rank = new Map();
+      (order ?? []).forEach((key, index) => {
+        if (!rank.has(key)) rank.set(key, index);
+      });
+      const UNRANKED = Number.MAX_SAFE_INTEGER;
+      return keys
+        .map((key, index) => ({ key, index, rank: rank.has(key) ? rank.get(key) : UNRANKED }))
+        .sort((a, b) => (a.rank === b.rank ? a.index - b.index : a.rank - b.rank))
+        .map((entry) => entry.key);
+    }
+
+    function moveInList(list, key, targetKey, after) {
+      const from = list.indexOf(key);
+      if (from < 0 || key === targetKey) return list.slice();
+      const rest = list.filter((k) => k !== key);
+      const at = rest.indexOf(targetKey);
+      if (at < 0) return [...rest, key];
+      rest.splice(after ? at + 1 : at, 0, key);
+      return rest;
+    }
+
+    /**
+     * 判断鼠标落在目标元素的上半区还是下半区。
+     *
+     * 测量失败（元素不可见、rect 全 0、没有 clientY）时返回 null，由调用方决定默认值。
+     * **不能把 0 坐标当成真实位置**：隐藏元素会被一律判成 before，
+     * 而拖拽失效最难查的一种表现就是"怎么拖都插在最前面"。
+     */
+    function edgeAt(element, clientY) {
+      if (!element || typeof element.getBoundingClientRect !== 'function') return null;
+      if (typeof clientY !== 'number' || !(clientY > 0)) return null;
+      const box = element.getBoundingClientRect();
+      if (!(box.height > 0)) return null;
+      return clientY < box.top + box.height / 2 ? 'before' : 'after';
+    }
 
     /* ---------------- 图标（内联 SVG，零依赖，线性 1.1px 与宿主体例一致） ---------------- */
 
@@ -73,6 +119,20 @@ window.__ModuleLoader__.load({
     const IconExport = (p) => svg(['M8 2.8V11', 'M5 8l3 3 3-3', 'M2.8 10.5v1.8c0 .8.6 1.4 1.4 1.4h7.6c.8 0 1.4-.6 1.4-1.4v-1.8'], (p && p.size) || 14);
     const IconSearch = (p) => svg(['M7.2 2.8a4.4 4.4 0 1 1 0 8.8 4.4 4.4 0 0 1 0-8.8Z', 'M10.4 10.4 13.4 13.4'], (p && p.size) || 13);
     const IconWarning = (p) => svg(['M8 2.8 13.8 12.8H2.2L8 2.8Z', 'M8 6.6v2.5', 'M8 11.1v.2'], (p && p.size) || 14);
+    // 拖动手柄：两列小圆点，是"可拖动"最通用的视觉信号
+    const IconGrip = (p) => h('svg', {
+      width: (p && p.size) || 12,
+      height: (p && p.size) || 12,
+      viewBox: '0 0 16 16',
+      fill: 'currentColor',
+      'aria-hidden': 'true',
+      focusable: 'false',
+    }, [3.2, 8, 12.8].flatMap((cy) => [-2.6, 2.6].map((cx) => h('circle', {
+      key: `${cy}:${cx}`, cx: 8 + cx, cy, r: 1.15,
+    }))));
+    const IconFolder = (p) => svg(['M2.2 5.4c0-.8.6-1.4 1.4-1.4h2.6l1.4 1.6h4.8c.8 0 1.4.6 1.4 1.4v4.6c0 .8-.6 1.4-1.4 1.4H3.6c-.8 0-1.4-.6-1.4-1.4V5.4Z'], (p && p.size) || 13);
+    const IconPlus = (p) => svg(['M8 3.4v9.2', 'M3.4 8h9.2'], (p && p.size) || 13);
+    const IconTrash = (p) => svg(['M3.4 4.6h9.2', 'M6.4 4.6V3.2h3.2v1.4', 'M4.8 4.6l.6 8.2h5.2l.6-8.2'], (p && p.size) || 12);
     const IconClose = (p) => svg(['M4 4l8 8', 'M12 4l-8 8'], (p && p.size) || 12);
 
     /* ---------------- 小工具 ---------------- */
@@ -157,6 +217,13 @@ window.__ModuleLoader__.load({
     }
 
     const rowKey = (skill) => `${skill.sourceKey}::${skill.name}`;
+
+    /** 从 rowKey 反解技能名（`sourceKey::name`），只用于提示文案。 */
+    const skillNameFromKey = (key) => {
+      const text = String(key ?? '');
+      const at = text.indexOf('::');
+      return at >= 0 ? text.slice(at + 2) : text;
+    };
 
     /* ---------------- 样式（注入一次，全部挂在 .skm- 命名空间下） ---------------- */
 
@@ -260,6 +327,46 @@ window.__ModuleLoader__.load({
 .skm-badge.err { background: color-mix(in srgb, var(--skm-err) 16%, transparent); color: var(--skm-err); }
 .skm-badge.muted { background: var(--skm-layer-2); color: var(--skm-label-2); }
 
+/* 分组 */
+.skm-groups { margin-top: 14px; border-top: .5px solid var(--skm-border-1); }
+.skm-group { border-bottom: .5px solid var(--skm-border-1); }
+.skm-group-head { display: flex; align-items: center; gap: 7px; padding: 7px 2px 6px; }
+.skm-group-toggle { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0; border: none; background: transparent; color: var(--skm-label); text-align: left; }
+.skm-group-toggle .skm-chev { margin-top: 0; }
+.skm-group.closed .skm-group-toggle .skm-chev { transform: none; }
+.skm-group.open .skm-group-toggle .skm-chev { transform: rotate(90deg); }
+.skm-group-name { font-weight: 600; font-size: 12.5px; }
+.skm-group-count { color: var(--skm-label-3); font-size: 11px; }
+.skm-group-acts { display: flex; align-items: center; gap: 2px; margin-left: auto; opacity: 0; transition: opacity .12s ease; }
+.skm-group-head:hover .skm-group-acts, .skm-group-acts:focus-within { opacity: 1; }
+.skm-group-body { padding-left: 2px; }
+.skm-group-empty { padding: 6px 2px 10px 22px; color: var(--skm-label-3); font-size: 11.5px; }
+.skm-group.ungrouped .skm-group-name { color: var(--skm-label-2); font-weight: 500; }
+
+/* 整理（拖动排序）模式 */
+.skm-organize { margin-top: 10px; padding: 9px 10px; border: .5px solid color-mix(in srgb, var(--skm-brand) 34%, var(--skm-border-2)); border-radius: var(--skm-radius-md); background: color-mix(in srgb, var(--skm-brand) 5%, transparent); }
+.skm-organize-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--skm-label-2); }
+.skm-organize-head .skm-spacer { flex: 1; }
+.skm-grip { flex: none; width: 16px; display: inline-flex; align-items: center; justify-content: center; margin-top: 2px; color: var(--skm-label-3); cursor: grab; border-radius: 3px; }
+.skm-grip:active { cursor: grabbing; }
+.skm-row.dragging { opacity: .45; }
+.skm-row.drop-before { box-shadow: inset 0 2px 0 var(--skm-brand); }
+.skm-row.drop-after { box-shadow: inset 0 -2px 0 var(--skm-brand); }
+.skm-row-line.selectable { cursor: pointer; }
+.skm-gname-input { height: 24px; flex: 1 1 120px; min-width: 0; padding: 0 7px; border: .5px solid var(--skm-border-2); border-radius: var(--skm-radius-sm); background: transparent; font-size: 12px; }
+.skm-group-head.drop-target { background: color-mix(in srgb, var(--skm-brand) 12%, transparent); border-radius: var(--skm-radius-sm); box-shadow: inset 0 0 0 1px var(--skm-brand); }
+.skm-organize-new { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+.skm-organize-new .skm-gname-input { flex: 1 1 auto; height: 26px; }
+
+/* 拖拽中的分组投放栏：所有分组都在眼前，不必边拖边滚 */
+.skm-dropbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding: 8px 10px; border: .5px solid color-mix(in srgb, var(--skm-brand) 40%, var(--skm-border-2)); border-radius: var(--skm-radius-md); background: color-mix(in srgb, var(--skm-brand) 8%, var(--dsw-alias-bg-module-platform, var(--skm-layer-1))); box-shadow: var(--skm-elevation); }
+.skm-dropbar-label { font-size: 11.5px; color: var(--skm-label-2); }
+.skm-dropbar-chips { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
+.skm-dropchip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border: .5px dashed color-mix(in srgb, var(--skm-brand) 50%, var(--skm-border-2)); border-radius: 999px; background: transparent; color: var(--skm-label-2); font-size: 11.5px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skm-dropchip:hover { background: color-mix(in srgb, var(--skm-brand) 10%, transparent); color: var(--skm-label); }
+.skm-dropchip.active { background: var(--skm-brand); border-color: var(--skm-brand); color: var(--dsw-alias-label-primary-foreground, #fff); }
+.skm-moveto { min-width: 96px; }
+
 /* 策略 chip + 菜单 */
 .skm-menu-wrap { position: relative; }
 .skm-chip { height: 22px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border: .5px solid var(--skm-border-2); border-radius: 999px; background: transparent; color: var(--skm-label-2); font-size: 11.5px; }
@@ -281,6 +388,7 @@ window.__ModuleLoader__.load({
 .skm-kv dt { color: var(--skm-label-3); }
 .skm-kv dd { margin: 0; color: var(--skm-label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skm-kv dd.mono { font-family: var(--skm-mono); font-size: 11px; }
+.skm-group-select { height: 22px; padding: 0 4px; font-size: 11.5px; color: var(--skm-label-2); }
 .skm-capture { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .skm-field { height: 26px; min-width: 84px; flex: 1 1 96px; padding: 0 7px; border: .5px solid var(--skm-border-2); border-radius: var(--skm-radius-sm); background: transparent; font-size: 11.5px; }
 .skm-field::placeholder { color: var(--skm-label-3); }
@@ -539,10 +647,141 @@ window.__ModuleLoader__.load({
         [0, 1, 2].map((i) => h('div', { key: i, style: { width: `${72 - i * 12}%` } })));
     }
 
+    /**
+     * 一个分组：可折叠标题（组名 + 数量 + 重命名/删除/拖动）+ 组内技能行。
+     * 未分组是虚拟组，不给重命名/删除，但同样可折叠、可作为拖放目标。
+     */
+    function GroupSection(props) {
+      const {
+        group, open, onToggleOpen, organize, drag,
+        onRename, onRemove, onAddHere, onDragGroupStart, onDragGroupOver, onDropGroup, onDragGroupEnd,
+        onGroupDropSkills, dragKeyRef,
+        children,
+      } = props;
+      const [editing, setEditing] = useState(false);
+      const [draft, setDraft] = useState(group.name);
+      const [hovering, setHovering] = useState(false);
+      const inputRef = useRef(null);
+      const isUngrouped = group.id === UNGROUPED;
+      // 投放区是否激活：读的是父组件传下来的实时 ref（同步），不是异步 state。
+      // 若用 state 判断，dragstart 之后浏览器立刻派发的第一个 dragover 会被忽略，
+      // 投放区永远不亮、drop 也永远不触发 —— 这是拖拽"看起来没反应"的根因。
+      const isSkillDrag = () => Boolean(organize && dragKeyRef && dragKeyRef.current);
+
+      useEffect(() => {
+        if (editing && inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select();
+        }
+      }, [editing]);
+
+      useEffect(() => {
+        setDraft(group.name);
+      }, [group.name]);
+
+      const commit = () => {
+        const name = draft.trim();
+        setEditing(false);
+        if (name && name !== group.name) onRename(group.id, name);
+        else setDraft(group.name);
+      };
+
+      return h('section', {
+        className: `skm-group${open ? ' open' : ' closed'}${isUngrouped ? ' ungrouped' : ''}${hovering ? ' drop-target' : ''}`,
+        'data-group-id': group.id,
+        draggable: organize && !isUngrouped ? true : undefined,
+        onDragStart: organize && !isUngrouped ? (event) => onDragGroupStart(event, group.id) : undefined,
+        onDragOver: organize && !isUngrouped ? (event) => onDragGroupOver(event, group.id) : undefined,
+        onDrop: organize && !isUngrouped ? (event) => onDropGroup(event, group.id) : undefined,
+        onDragEnd: organize && !isUngrouped ? () => onDragGroupEnd() : undefined,
+      },
+        h('div', {
+          className: `skm-group-head${hovering ? ' drop-target' : ''}`,
+          // 把技能拖到组标题上 → 归入该组。判断用 ref，不用 state（见上方注释）。
+          onDragOver: (event) => {
+            if (!isSkillDrag()) return;
+            event.preventDefault();
+            event.stopPropagation();
+            try { event.dataTransfer.dropEffect = 'move'; } catch { /* 忽略 */ }
+            if (!hovering) setHovering(true);
+          },
+          onDragLeave: () => { if (hovering) setHovering(false); },
+          onDrop: (event) => {
+            if (!isSkillDrag()) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setHovering(false);
+            onGroupDropSkills(group.id);
+          },
+        },
+          h('button', {
+            type: 'button',
+            className: 'skm-group-toggle',
+            'aria-expanded': open,
+            onClick: () => onToggleOpen(group.id),
+          },
+            h('span', { className: 'skm-chev' }, h(IconChevron, { size: 11 })),
+            h(IconFolder, { size: 12 }),
+            editing
+              ? null
+              : h('span', { className: 'skm-group-name' }, group.name),
+            h('span', { className: 'skm-group-count' }, `${group.skills.length}`)),
+          editing
+            ? h('input', {
+              className: 'skm-gname-input',
+              ref: inputRef,
+              value: draft,
+              onChange: (e) => setDraft(e.target.value),
+              onBlur: commit,
+              onKeyDown: (e) => {
+                if (e.key === 'Enter') commit();
+                else if (e.key === 'Escape') { setDraft(group.name); setEditing(false); }
+              },
+              'aria-label': '分组名称',
+            })
+            : null,
+          h('div', { className: 'skm-group-acts' },
+            editing
+              ? null
+              : h(Btn, {
+                size: 'sm',
+                onClick: () => setEditing(true),
+                title: '重命名分组',
+              }, '重命名'),
+            isUngrouped
+              ? null
+              : h(Btn, {
+                className: 'icon-only',
+                onClick: () => {
+                  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+                    if (!window.confirm(`删除分组「${group.name}」？组内 ${group.skills.length} 个技能会回到「未分组」，技能本身不受影响。`)) return;
+                  }
+                  onRemove(group.id);
+                },
+                title: '删除分组',
+                'aria-label': `删除分组 ${group.name}`,
+              }, h(IconTrash, { size: 12 })),
+            organize
+              ? h(Btn, {
+                size: 'sm',
+                onClick: () => onAddHere(group.id),
+                title: '加入分组',
+              }, '加')
+              : null)),
+        open
+          ? h('div', { className: 'skm-group-body' },
+            group.skills.length === 0
+              ? h('p', { className: 'skm-group-empty' }, organize ? '把技能拖到这里' : '这个分组还没有技能')
+              : children)
+          : null);
+    }
+
     function SkillRow(props) {
       const {
         skill, open, status, busy, checked, onToggle, onOpen, onChangePolicy,
         detailState,
+        // 整理模式（拖拽排序）相关：不传即普通模式，行为完全不变
+        organize, groupId, drag, onDragStart, onDragOver, onDragEnd, onDrop,
       } = props;
       const key = rowKey(skill);
       const statusKnown = status && !status.error;
@@ -569,21 +808,55 @@ window.__ModuleLoader__.load({
         meta.push(h('span', { key: 'err', style: { color: 'var(--skm-err)' } }, '巡检失败'));
       }
 
-      return h('li', { className: `skm-row${open ? ' open' : ''}` },
-        h('div', { className: 'skm-row-line' },
-          h('input', {
-            type: 'checkbox',
-            className: 'skm-check',
-            checked,
-            onChange: () => onToggle(key),
-            'aria-label': `选择 ${skill.name}`,
-          }),
+      const isDragSource = Boolean(drag && drag.key === key);
+      const dropEdge = drag && drag.overKey === key && drag.key !== key ? drag.edge : null;
+      const rowClass = [
+        'skm-row',
+        open ? 'open' : '',
+        isDragSource ? 'dragging' : '',
+        dropEdge === 'before' ? 'drop-before' : '',
+        dropEdge === 'after' ? 'drop-after' : '',
+      ].filter(Boolean).join(' ');
+
+      return h('li', {
+        className: rowClass,
+        draggable: organize ? true : undefined,
+        onDragStart: organize ? (event) => onDragStart(event, key) : undefined,
+        onDragOver: organize ? (event) => onDragOver(event, key, groupId) : undefined,
+        onDrop: organize ? (event) => onDrop(event, key, groupId) : undefined,
+        onDragEnd: organize ? () => onDragEnd() : undefined,
+      },
+        h('div', {
+          className: 'skm-row-line',
+          // 整理模式下整行可点：点哪都能选中，不必瞄准标题
+          onClick: organize ? () => onToggle(key) : undefined,
+          role: organize ? 'button' : undefined,
+          tabIndex: organize ? 0 : undefined,
+          onKeyDown: organize ? (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              onToggle(key);
+            }
+          } : undefined,
+        },
+          organize
+            ? h('span', { className: 'skm-grip', 'aria-hidden': 'true' }, h(IconGrip, { size: 12 }))
+            : h('input', {
+              type: 'checkbox',
+              className: 'skm-check',
+              checked,
+              onChange: () => onToggle(key),
+              'aria-label': `选择 ${skill.name}`,
+            }),
           h('button', {
             type: 'button',
             className: 'skm-row-main',
             'aria-expanded': open,
             'aria-label': `${open ? '收起' : '展开'} ${skill.name} 的详情`,
-            onClick: () => onOpen(skill),
+            onClick: (event) => {
+              if (organize) event.stopPropagation();
+              onOpen(skill);
+            },
           },
             h('span', { className: 'skm-chev' }, h(IconChevron, { size: 11 })),
             h('span', { className: 'skm-body' },
@@ -610,6 +883,7 @@ window.__ModuleLoader__.load({
         skill, detailState, busy, onCapture, onNote, onTag, note, tag,
         revisionsFromDetail, onSelectRev, selectedRev, onExportRev, onRestore, onCompare,
         onFile, diff, cmp, annoOpen, onAnnoToggle, onAnnotate, current, onRefreshDetail,
+        groups, groupOf, onAssignGroup,
       } = props;
 
       const data = detailState && detailState.data;
@@ -641,6 +915,19 @@ window.__ModuleLoader__.load({
           h('dt', null, '路径'), h('dd', { className: 'mono', title: skill.path }, skill.path),
           h('dt', null, '来源'), h('dd', null, `${skill.sourceLabel}（优先级 ${skill.rank}）`),
           h('dt', null, '体积'), h('dd', null, `${skill.fileCount} 个文件 · ${fmtBytes(skill.bytes)}`),
+          h('dt', null, '所属分组'), h('dd', null,
+            h('select', {
+              className: 'skm-select skm-group-select',
+              value: groupOf(skill),
+              onChange: (e) => onAssignGroup(skill, e.target.value),
+              'aria-label': `${skill.name} 的所属分组`,
+            },
+              h('option', { value: UNGROUPED }, '未分组'),
+              (groups || []).map((g) => h('option', { key: g.id, value: g.id }, g.name)),
+              // 磁盘上还没有任何分组时，给一个明确的行动提示而不是空白下拉
+              (groups || []).length === 0
+                ? h('option', { value: '', disabled: true }, '（还没有分组，先在工具条点「整理」新建）')
+                : null)),
           h('dt', null, '状态'), h('dd', null, state
             ? (state.matchesHead === null
                 ? '未建立基线'
@@ -844,6 +1131,20 @@ window.__ModuleLoader__.load({
       const [importFile, setImportFile] = useState(null);
       const [importPlan, setImportPlan] = useState(null);
       const [strategy, setStrategy] = useState('keep-both');
+      // 分组与排序：layout 由服务端随 list 下发，本地只保留一份副本用于乐观更新
+      const [layout, setLayout] = useState({ version: 1, groups: [], assignments: {}, order: [] });
+      const [organize, setOrganize] = useState(false);
+      const [drag, setDrag] = useState(null);
+      const [groupDrag, setGroupDrag] = useState(null);
+      const [closedGroups, setClosedGroups] = useState(() => new Set());
+      // 新建分组改成内联输入：Electron 的 window.prompt 常被禁用，点了没有任何反应
+      const [newGroupOpen, setNewGroupOpen] = useState(false);
+      const [newGroupName, setNewGroupName] = useState('');
+      // 路由探测的重新触发计数（重新扫描时顺便再探一次）
+      const [refreshTick, setRefreshTick] = useState(0);
+      const [routeWarningDismissed, setRouteWarningDismissed] = useState(false);
+      // 拖拽投放栏当前高亮的分组（拖到哪个 chip 上）
+      const [dropTargetId, setDropTargetId] = useState(null);
 
       const run = useCallback(async (label, fn) => {
         setBusy(label);
@@ -876,6 +1177,9 @@ window.__ModuleLoader__.load({
         const data = await run('refresh', async () => {
           const body = await api(R.list);
           setListData(body);
+          // 服务端是布局的唯一真源：每次刷新都用它覆盖本地副本，
+          // 避免"本地乐观更新 + 别处改动"两套状态长期分叉。
+          if (body.layout) setLayout(body.layout);
           return body;
         });
         if (data) refreshStatus();
@@ -883,9 +1187,11 @@ window.__ModuleLoader__.load({
         return data;
       }, [run, refreshStatus]);
 
-      /** 用户点「重新扫描」：连被手动忽略的提示条一起恢复 */
+      /** 用户点「重新扫描」：连被手动忽略的提示条一起恢复，并重探一次路由 */
       const manualRefresh = useCallback(() => {
         setBannerDismissed(false);
+        setRouteWarningDismissed(false);
+        setRefreshTick((n) => n + 1);
         return refresh();
       }, [refresh]);
 
@@ -919,6 +1225,328 @@ window.__ModuleLoader__.load({
           }
         });
       }, [skills, query, filter, statusMap]);
+
+      /* ---------------- 分组与排序 ---------------- */
+
+      const allKeys = useMemo(() => skills.map(rowKey), [skills]);
+
+      /** 未分组以外的可见技能按 layout.order 排好，供分组渲染。 */
+      const orderedVisible = useMemo(
+        () => sortKeysByOrder(visible.map(rowKey), layout.order).map((key) => visible.find((s) => rowKey(s) === key)),
+        [visible, layout.order],
+      );
+
+      const orderedSkills = useMemo(
+        () => sortKeysByOrder(allKeys, layout.order).map((key) => skills.find((s) => rowKey(s) === key)),
+        [allKeys, skills, layout.order],
+      );
+
+      const groupOfKey = useCallback((key) => {
+        const gid = layout.assignments && layout.assignments[key];
+        if (!gid) return UNGROUPED;
+        return (layout.groups || []).some((g) => g.id === gid) ? gid : UNGROUPED;
+      }, [layout]);
+
+      /**
+       * 切分组视图。搜索/筛选在跑的时候不分组 —— 过滤结果落进空组会造成大段空白，
+       * 这时用户真正想看的是"匹配到了什么"。
+       *
+       * **整理模式下仍然分组**：整理的一半工作就是"把技能拖进组"，不显示分组就没法做。
+       */
+      const grouped = useMemo(() => {
+        const filtering = Boolean(query.trim()) || filter !== 'all';
+        const hasGroups = (layout.groups || []).length > 0;
+        const useGroups = !filtering && (hasGroups || organize);
+        if (!useGroups) return null;
+        const buckets = new Map();
+        for (const group of layout.groups) buckets.set(group.id, []);
+        buckets.set(UNGROUPED, []);
+        for (const skill of orderedVisible) {
+          if (!skill) continue;
+          const gid = groupOfKey(rowKey(skill));
+          if (!buckets.has(gid)) buckets.set(gid, []);
+          buckets.get(gid).push(skill);
+        }
+        const out = layout.groups.map((group) => ({ id: group.id, name: group.name, skills: buckets.get(group.id) ?? [] }));
+        const rest = buckets.get(UNGROUPED) ?? [];
+        if (rest.length || organize) out.push({ id: UNGROUPED, name: '未分组', skills: rest });
+        return out;
+      }, [organize, query, filter, layout, orderedVisible, groupOfKey]);
+
+      /**
+       * 路由是否已经在本进程里注册。
+       *
+       * 宿主插件没有 HMR：升到 0.4 后如果没重启 DSH，`layout` 路由在旧进程里不存在，
+       * 每次分组/排序都会失败。这里用一次探测把事实查清，再把"光秃的 HTTP 404"
+       * 换成用户能照做的说明 —— 否则界面上只剩一个没法处理的报错。
+       */
+      const [routeReady, setRouteReady] = useState(null);
+      useEffect(() => {
+        let alive = true;
+        (async () => {
+          try {
+            const response = await fetch(R.layout, { method: 'GET', credentials: 'same-origin' });
+            if (!alive) return;
+            // 404 = 路由没注册（旧进程）；200 = 就绪；其它（403 等）视为就绪，
+            // 让真正的错误在具体操作时暴露，而不是在这里误判成"需要重启"。
+            const ready = response.status !== 404;
+            setRouteReady(ready);
+            if (ready) setRouteWarningDismissed(false);
+          } catch {
+            if (alive) setRouteReady(true);
+          }
+        })();
+        return () => { alive = false; };
+      }, [refreshTick]);
+
+      /** 写布局：乐观更新 + 失败回滚。写盘是所有分组/排序操作的唯一出口。 */
+      const saveLayout = useCallback(async (patch) => {
+        const before = layout;
+        setLayout((prev) => ({
+          ...prev,
+          ...(patch.groups !== undefined ? { groups: patch.groups } : {}),
+          ...(patch.assignments !== undefined ? { assignments: patch.assignments } : {}),
+          ...(patch.order !== undefined ? { order: patch.order } : {}),
+        }));
+        try {
+          const body = await postJson(R.layout, patch);
+          if (body && body.layout) setLayout(body.layout);
+          setRouteReady(true);
+          return body && body.layout;
+        } catch (e) {
+          setLayout(before);
+          setError(explainLayoutError(e, patch));
+          return null;
+        }
+      }, [layout]);
+
+      /** 让「HTTP 404」变成一句能照做的话。 */
+      const explainLayoutError = (error, patch) => {
+        const message = error && error.message ? error.message : String(error);
+        const action = patch && patch.order !== undefined && patch.groups === undefined && patch.assignments === undefined
+          ? '调整排序'
+          : '修改分组';
+        if (/HTTP 404/.test(message)) {
+          setRouteReady(false);
+          return `无法${action}：宿主进程里还没有 /api/skill-manager.layout 路由。`
+            + '这是插件刚升级、宿主仍是旧进程的典型表现——重启一次 DSH Desktop 后即可正常使用。';
+        }
+        return message;
+      };
+
+      const assignmentsOf = (source) => ({ ...(source.assignments || {}) });
+
+      /** 由「分组顺序 + 组内顺序」重建一条全局 order。 */
+      const rebuildOrder = (groups, assignments) => {
+        const listing = [];
+        const inGroup = new Set();
+        for (const group of groups) {
+          for (const skill of orderedSkills) {
+            if (!skill) continue;
+            const key = rowKey(skill);
+            if (assignments[key] === group.id) {
+              listing.push(key);
+              inGroup.add(key);
+            }
+          }
+        }
+        for (const skill of orderedSkills) {
+          if (!skill) continue;
+          const key = rowKey(skill);
+          if (!inGroup.has(key)) listing.push(key);
+        }
+        return listing;
+      };
+
+      const addGroup = (name) => saveLayout({
+        groups: [...(layout.groups || []), { name }],
+      });
+
+      const renameGroup = (id, name) => saveLayout({
+        groups: (layout.groups || []).map((g) => (g.id === id ? { ...g, name } : g)),
+      });
+
+      const removeGroup = (id) => {
+        const assignments = { ...(layout.assignments || {}) };
+        for (const [key, gid] of Object.entries(assignments)) if (gid === id) delete assignments[key];
+        return saveLayout({
+          groups: (layout.groups || []).filter((g) => g.id !== id),
+          assignments,
+        });
+      };
+
+      const moveGroup = (id, targetId, after) => {
+        const ids = (layout.groups || []).map((g) => g.id);
+        const nextIds = moveInList(ids, id, targetId, after);
+        const byId = new Map((layout.groups || []).map((g) => [g.id, g]));
+        const groups = nextIds.map((gid) => byId.get(gid)).filter(Boolean);
+        // 一次性提交：组顺序 + 由新顺序重建的全局 order。
+        // 分两次提交会在中间一刻留下"分组已重排、order 还是旧的"的不一致状态。
+        return saveLayout({ groups, order: rebuildOrder(groups, assignmentsOf(layout)) });
+      };
+
+      /** 把技能放进分组（或移出到未分组），排在目标分组末尾。 */
+      const assignToGroup = (keys, gid) => {
+        const assignments = assignmentsOf(layout);
+        for (const key of keys) {
+          if (gid === UNGROUPED) delete assignments[key];
+          else assignments[key] = gid;
+        }
+        const groups = layout.groups || [];
+        return saveLayout({ assignments, order: rebuildOrder(groups, assignments) });
+      };
+
+      /** 分组 id → 名称（用于提示文案；找不到时给个中性说法而不是 undefined）。 */
+      const groupName = (gid) => {
+        if (gid === UNGROUPED) return '未分组';
+        const found = (layout.groups || []).find((g) => g.id === gid);
+        return found ? found.name : '未知分组';
+      };
+
+      /* ---------------- 拖拽 ---------------- */
+
+      /**
+       * 拖拽状态**同时**放在 ref 里。
+       *
+       * 只用 useState 会有一个真实缺陷：`dragstart` 里 setDrag 是异步的，紧接着的
+       * 第一个 `dragover`/`drop` 读到的还是上一次渲染的闭包值（null），于是拖放静默失效。
+       * 事件处理里一律读 ref（同步、立即生效），state 只用来驱动视觉高亮。
+       */
+      const dragKeyRef = useRef(null);
+      const setDragBoth = (value) => {
+        dragKeyRef.current = value;
+        setDrag(value);
+      };
+
+      const onDragStart = (event, key) => {
+        setDragBoth({ key, overKey: null, edge: 'after', overGroup: null });
+        try {
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', key);
+        } catch {
+          /* 某些浏览器/受保护模式不允许 setData，拖拽仍可工作 */
+        }
+      };
+
+      const onDragOver = (event, key, groupId) => {
+        const current = dragKeyRef.current;
+        if (!current || !current.key) return;
+        event.preventDefault();
+        try {
+          event.dataTransfer.dropEffect = 'move';
+        } catch {
+          /* 忽略 */
+        }
+        const edge = edgeAt(event.currentTarget, event.clientY);
+        if (current.overKey !== key || current.edge !== edge || current.overGroup !== groupId) {
+          const next = { ...current, overKey: key, edge: edge ?? current.edge ?? 'after', overGroup: groupId };
+          // 同步写进 ref：drop 一定读到这次 dragover 判定出的边缘
+          dragKeyRef.current = next;
+          setDrag(next);
+        }
+      };
+
+      const onDrop = async (event, targetKey, targetGroup) => {
+        event.preventDefault();
+        const current = dragKeyRef.current;
+        setDragBoth(null);
+        const source = current && current.key;
+        if (!source || source === targetKey) return;
+
+        // 投放边缘优先用 drop 事件自己的坐标（这一刻的事实），测量不可用时退回 dragover 的判定。
+        const edge = edgeAt(event.currentTarget, event.clientY)
+          ?? (current && current.edge)
+          ?? 'after';
+
+        const assignments = assignmentsOf(layout);
+        const movingToOtherGroup = Boolean(targetGroup) && groupOfKey(source) !== targetGroup;
+        if (movingToOtherGroup) {
+          if (targetGroup === UNGROUPED) delete assignments[source];
+          else assignments[source] = targetGroup;
+        }
+        // 1) 在当前 order 上把源技能移到目标位置 —— 这完全等价于用户看到的操作。
+        const base = orderedSkills.filter(Boolean).map(rowKey);
+        let nextOrder = moveInList(base, source, targetKey, edge === 'after');
+
+        // 2) 只有跨组时才需要让 order 与新的分组归属对齐。
+        //    重建会打散组内相对顺序，所以重建之后必须**再按屏幕上的目标位置插入一次**，
+        //    否则技能会跑到该组末尾 —— 这就是"拖到上半区却排到最后"的根因。
+        if (movingToOtherGroup) {
+          const rebuilt = rebuildOrder(layout.groups || [], assignments);
+          nextOrder = moveInList(rebuilt, source, targetKey, edge === 'after');
+        }
+
+        await saveLayout(movingToOtherGroup ? { assignments, order: nextOrder } : { order: nextOrder });
+      };
+
+      const onDragEnd = () => setDragBoth(null);
+
+      /** 把「正在拖的技能」放进指定分组（拖到组标题上时触发） */
+      const onGroupDropSkills = (gid) => {
+        const current = dragKeyRef.current;
+        setDragBoth(null);
+        const key = current && current.key;
+        if (!key) return;
+        assignToGroup([key], gid);
+      };
+
+      /* 分组拖动（整理模式下调整组顺序）：同样用 ref 绕开异步 state */
+      const groupDragRef = useRef(null);
+      const setGroupDragBoth = (value) => {
+        groupDragRef.current = value;
+        setGroupDrag(value);
+      };
+
+      const onDragGroupStart = (event, id) => {
+        setGroupDragBoth({ id, overId: null });
+        try {
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', id);
+        } catch {
+          /* 忽略 */
+        }
+      };
+      const onDragGroupOver = (event, id) => {
+        const current = groupDragRef.current;
+        if (!current || current.id === id) return;
+        event.preventDefault();
+        try {
+          event.dataTransfer.dropEffect = 'move';
+        } catch {
+          /* 忽略 */
+        }
+        if (current.overId !== id) setGroupDragBoth({ ...current, overId: id });
+      };
+      const onDropGroup = (event, id) => {
+        event.preventDefault();
+        const current = groupDragRef.current;
+        setGroupDragBoth(null);
+        const source = current && current.id;
+        if (!source || source === id) return;
+        moveGroup(source, id, false);
+      };
+      const onDragGroupEnd = () => setGroupDragBoth(null);
+
+      /** 「加」按钮：把当前选中（或全部可见）技能放进该分组 */
+      const addToGroupPrompt = (gid) => {
+        const keys = selected.size ? [...selected] : visible.map(rowKey);
+        if (!keys.length) {
+          setError('没有可加入的技能：先勾选技能，或在整理模式里直接拖动。');
+          return;
+        }
+        assignToGroup(keys, gid);
+        setNotice({ kind: 'ok', text: `已把 ${keys.length} 个技能加入该分组` });
+      };
+
+      /** 把 order 恢复成"扫描顺序"（＝清掉自定义排序） */
+      const resetOrder = () => saveLayout({ order: [] });
+
+      const toggleGroupClosed = (id) => setClosedGroups((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
 
       const currentSkill = useMemo(
         () => skills.find((skill) => rowKey(skill) === expandedKey) || null,
@@ -1133,6 +1761,56 @@ window.__ModuleLoader__.load({
       const selectedSkills = skills.filter((skill) => selected.has(rowKey(skill)));
       const showBanner = !bannerDismissed && (missingBaseline > 0 || dirtyCount > 0);
 
+      /**
+       * 一行技能。分组视图和扁平视图共用同一份，避免两处 props 漂移 ——
+       * 之前扁平/分组各写一遍时，加一个字段就得改两处，漏掉就会出现"展开详情少一半数据"。
+       */
+      const renderRow = (skill, groupId) => {
+        const key = rowKey(skill);
+        const isOpen = expandedKey === key;
+        return h(SkillRow, {
+          key,
+          skill,
+          groupId,
+          open: isOpen,
+          status: statusOf(skill),
+          busy,
+          checked: selected.has(key),
+          onToggle: toggle,
+          onOpen: openRow,
+          onChangePolicy: changePolicy,
+          detailState: isOpen ? detailState : null,
+          revisionsFromDetail: detailState.data && detailState.data.revisions,
+          current: detailState.data && detailState.data.current,
+          selectedRev: isOpen ? selectedRev : null,
+          onSelectRev: (id) => { setSelectedRev(id); setCmp(null); setDiff(null); },
+          onExportRev: exportRevision,
+          onRestore: restore,
+          onCompare: compare,
+          onFile: openFile,
+          diff: isOpen ? diff : null,
+          cmp: isOpen ? cmp : null,
+          annoOpen,
+          onAnnoToggle: () => setAnnoOpen((v) => !v),
+          onAnnotate: annotate,
+          onCapture: capture,
+          note,
+          tag,
+          onNote: setNote,
+          onTag: setTag,
+          onRefreshDetail: () => currentSkill && loadDetail(currentSkill),
+          organize,
+          drag,
+          onDragStart,
+          onDragOver,
+          onDragEnd,
+          onDrop,
+          groups: layout.groups || [],
+          groupOf: (s) => groupOfKey(rowKey(s)),
+          onAssignGroup: (s, gid) => assignToGroup([rowKey(s)], gid),
+        });
+      };
+
       return h('div', { className: 'skm-root' },
         /* 页头 */
         h('header', { className: 'skm-head' },
@@ -1181,6 +1859,34 @@ window.__ModuleLoader__.load({
                   h('span', { key: 'n' }, `已选 ${selected.size}`),
                   h(Btn, { key: 'all', size: 'sm', onClick: selectAll }, allVisibleSelected ? '取消全选' : '全选'),
                   h(Btn, { key: 'clear', size: 'sm', onClick: () => setSelected(new Set()) }, '清除'),
+                  // 批量移组：不用拖动，也不受"目标在视口外"影响。
+                  // 技能很多时这条路径比拖拽可靠得多。
+                  h('select', {
+                    key: 'moveto',
+                    className: 'skm-select skm-moveto',
+                    value: '',
+                    disabled: !!busy || (layout.groups || []).length === 0,
+                    title: (layout.groups || []).length === 0 ? '先新建一个分组' : '把选中的技能移到分组',
+                    'aria-label': '把选中的技能移到分组',
+                    onChange: (e) => {
+                      const gid = e.target.value;
+                      e.target.value = '';
+                      if (!gid) return;
+                      const keys = [...selected];
+                      assignToGroup(keys, gid).then((next) => {
+                        if (next) {
+                          setNotice({
+                            kind: 'ok',
+                            text: `已把 ${keys.length} 个技能移到「${gid === UNGROUPED ? '未分组' : groupName(gid)}」`,
+                          });
+                          setSelected(new Set());
+                        }
+                      });
+                    },
+                  },
+                    h('option', { value: '' }, '移到分组…'),
+                    (layout.groups || []).map((g) => h('option', { key: g.id, value: g.id }, g.name)),
+                    h('option', { value: UNGROUPED }, '未分组')),
                   h(Btn, {
                     key: 'exp',
                     size: 'sm',
@@ -1189,7 +1895,151 @@ window.__ModuleLoader__.load({
                     disabled: !!busy,
                   }, '导出选中'),
                 ]
-              : [h(Btn, { key: 'all-only', size: 'sm', onClick: selectAll, disabled: !visible.length }, '全选')])),
+              : [h(Btn, { key: 'all-only', size: 'sm', onClick: selectAll, disabled: !visible.length }, '全选')],
+            h(Btn, {
+              size: 'sm',
+              variant: organize ? 'primary' : 'outline',
+              onClick: () => {
+                setOrganize((v) => !v);
+                setExpandedKey(null);
+              },
+              'aria-pressed': organize,
+              title: organize ? '退出整理模式' : '进入整理模式：拖动排序、拖动分组',
+            }, organize ? '完成整理' : '整理'))),
+
+        /* 整理模式提示条 */
+        organize
+          ? h('div', { className: 'skm-organize' },
+              h('div', { className: 'skm-organize-head' },
+                h(IconGrip, { size: 12 }),
+                h('span', null, '拖动技能行排序；拖到别的分组标题下即归入该组。'),
+                h('span', { className: 'skm-spacer' }),
+                newGroupOpen
+                  ? null
+                  : h(Btn, {
+                    size: 'sm',
+                    onClick: () => { setNewGroupName(''); setNewGroupOpen(true); },
+                  }, h(IconPlus, { size: 12 }), '新建分组'),
+                h(Btn, {
+                  size: 'sm',
+                  disabled: !(layout.order || []).length,
+                  onClick: () => resetOrder().then((next) => {
+                    if (next) setNotice({ kind: 'ok', text: '已恢复为扫描顺序' });
+                  }),
+                }, '恢复默认顺序')),
+              // 内联输入，避免依赖 window.prompt（Electron 里常被禁用，点了毫无反应）
+              newGroupOpen
+                ? h('div', { className: 'skm-organize-new' },
+                    h('input', {
+                      className: 'skm-gname-input',
+                      value: newGroupName,
+                      autoFocus: true,
+                      placeholder: '新分组名称，回车创建',
+                      'aria-label': '新分组名称',
+                      onChange: (e) => setNewGroupName(e.target.value),
+                      onKeyDown: (e) => {
+                        if (e.key === 'Enter') {
+                          const cleaned = newGroupName.trim();
+                          if (!cleaned) return;
+                          setNewGroupOpen(false);
+                          setNewGroupName('');
+                          addGroup(cleaned).then((next) => {
+                            if (next) setNotice({ kind: 'ok', text: `已新建分组「${cleaned}」` });
+                          });
+                        } else if (e.key === 'Escape') {
+                          setNewGroupOpen(false);
+                          setNewGroupName('');
+                        }
+                      },
+                    }),
+                    h(Btn, {
+                      size: 'sm',
+                      disabled: !newGroupName.trim(),
+                      onClick: () => {
+                        const cleaned = newGroupName.trim();
+                        if (!cleaned) return;
+                        setNewGroupOpen(false);
+                        setNewGroupName('');
+                        addGroup(cleaned).then((next) => {
+                          if (next) setNotice({ kind: 'ok', text: `已新建分组「${cleaned}」` });
+                        });
+                      },
+                    }, '创建'),
+                    h(Btn, {
+                      size: 'sm',
+                      onClick: () => { setNewGroupOpen(false); setNewGroupName(''); },
+                    }, '取消'))
+                : null)
+          : null,
+
+        /*
+         * 拖拽中的分组投放栏。
+         *
+         * 技能一多，目标分组标题往往在视口外，"边拖边滚"极难操作，而且滚动过程
+         * 本身会触发 dragover 抖动。这里在所有分组都可见的位置（顶部常驻条）
+         * 提供全部投放目标，把"拖到远处的组"变成"拖到眼前的一条"。
+         */
+        drag && drag.key && organize
+          ? h('div', { className: 'skm-dropbar', role: 'region', 'aria-label': '分组投放区' },
+              h('span', { className: 'skm-dropbar-label' }, `把「${skillNameFromKey(drag.key)}」放到：`),
+              h('div', { className: 'skm-dropbar-chips' },
+                (layout.groups || []).map((group) => h('button', {
+                  key: group.id,
+                  type: 'button',
+                  className: `skm-dropchip${dropTargetId === group.id ? ' active' : ''}`,
+                  onDragOver: (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    try { event.dataTransfer.dropEffect = 'move'; } catch { /* 忽略 */ }
+                    if (dropTargetId !== group.id) setDropTargetId(group.id);
+                  },
+                  onDragEnter: () => setDropTargetId(group.id),
+                  onDragLeave: () => setDropTargetId((prev) => (prev === group.id ? null : prev)),
+                  onDrop: (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDropTargetId(null);
+                    onGroupDropSkills(group.id);
+                  },
+                }, h(IconFolder, { size: 11 }), group.name)),
+                h('button', {
+                  key: UNGROUPED,
+                  type: 'button',
+                  className: `skm-dropchip${dropTargetId === UNGROUPED ? ' active' : ''}`,
+                  onDragOver: (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    try { event.dataTransfer.dropEffect = 'move'; } catch { /* 忽略 */ }
+                    if (dropTargetId !== UNGROUPED) setDropTargetId(UNGROUPED);
+                  },
+                  onDragEnter: () => setDropTargetId(UNGROUPED),
+                  onDragLeave: () => setDropTargetId((prev) => (prev === UNGROUPED ? null : prev)),
+                  onDrop: (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDropTargetId(null);
+                    onGroupDropSkills(UNGROUPED);
+                  },
+                }, '未分组')),
+              h(Btn, {
+                size: 'sm',
+                onClick: () => setDragBoth(null),
+                title: '取消拖动',
+              }, '取消'))
+          : null,
+
+        /* 路由未就绪：把"点了没反应"变成一句能照做的说明 */
+        routeReady === false && !routeWarningDismissed
+          ? h('div', { className: 'skm-alert err' },
+              h('span', { className: 'skm-alert-text' },
+                '分组与排序暂时不可用：宿主进程里还没有 /api/skill-manager.layout 路由。'
+                + '插件刚升级、宿主仍是旧进程时会出现——重启一次 DSH Desktop 即可恢复。'),
+              h(Btn, {
+                className: 'icon-only',
+                onClick: () => setRouteWarningDismissed(true),
+                'aria-label': '关闭',
+              }, h(IconClose, { size: 11 })))
+          : null,
 
         /* 提示条 */
         error
@@ -1231,38 +2081,29 @@ window.__ModuleLoader__.load({
                 h('p', null, skills.length === 0
                   ? '技能放在 ~/.dsh/skills、profile 的 skills 目录或工作区的 .dsh/skills 下（每个技能是一个含 SKILL.md 的目录，或单个 .md）。'
                   : '换个关键词，或把筛选切回「全部」。'))
-            : h('ul', { className: 'skm-list' },
-                visible.map((skill) => h(SkillRow, {
-                  key: rowKey(skill),
-                  skill,
-                  open: expandedKey === rowKey(skill),
-                  status: statusOf(skill),
-                  busy,
-                  checked: selected.has(rowKey(skill)),
-                  onToggle: toggle,
-                  onOpen: openRow,
-                  onChangePolicy: changePolicy,
-                  detailState: expandedKey === rowKey(skill) ? detailState : null,
-                  revisionsFromDetail: detailState.data && detailState.data.revisions,
-                  current: detailState.data && detailState.data.current,
-                  selectedRev: expandedKey === rowKey(skill) ? selectedRev : null,
-                  onSelectRev: (id) => { setSelectedRev(id); setCmp(null); setDiff(null); },
-                  onExportRev: exportRevision,
-                  onRestore: restore,
-                  onCompare: compare,
-                  onFile: openFile,
-                  diff: expandedKey === rowKey(skill) ? diff : null,
-                  cmp: expandedKey === rowKey(skill) ? cmp : null,
-                  annoOpen,
-                  onAnnoToggle: () => setAnnoOpen((v) => !v),
-                  onAnnotate: annotate,
-                  onCapture: capture,
-                  note,
-                  tag,
-                  onNote: setNote,
-                  onTag: setTag,
-                  onRefreshDetail: () => currentSkill && loadDetail(currentSkill),
-                }))),
+            : grouped
+              ? h('div', { className: 'skm-groups' },
+                  grouped.map((group) => h(GroupSection, {
+                    key: group.id,
+                    group,
+                    open: !closedGroups.has(group.id),
+                    onToggleOpen: toggleGroupClosed,
+                    organize,
+                    drag,
+                    onRename: renameGroup,
+                    onRemove: removeGroup,
+                    onAddHere: addToGroupPrompt,
+                    onDragGroupStart,
+                    onDragGroupOver,
+                    onDropGroup,
+                    onDragGroupEnd,
+                    onGroupDropSkills,
+                    dragKeyRef,
+                  },
+                    h('ul', { className: 'skm-list' },
+                      group.skills.map((skill) => renderRow(skill, group.id))))))
+              : h('ul', { className: 'skm-list' },
+                  orderedVisible.filter(Boolean).map((skill) => renderRow(skill, null))),
 
         h(Diagnostics, { listData }),
 

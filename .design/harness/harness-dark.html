@@ -101,6 +101,8 @@ body { background:#0f1115; }
     current: { sha256: 'ffff', totalBytes: 25190, fileCount: 8, headRevision: revisions[0].contentHash, matchesHead: false, dirty: true },
   };
 
+  const listPayloadLayout = { version: 1, groups: [{ id: 'g_tool', name: '工具类' }, { id: 'g_flow', name: '流程类' }], assignments: { 'user-dsh::code-review': 'g_tool' }, order: ['user-dsh::baa-generator', 'user-dsh::code-review'] };
+
   const listPayload = {
     scannedAt: Date.now(),
     roots: [
@@ -108,6 +110,7 @@ body { background:#0f1115; }
       { key: SOURCE_B.key, label: SOURCE_B.label, rank: 300, dir: 'C:/Users/me/.dsh/profiles/desktop/skills', managed: true, exists: true },
     ],
     skills,
+    layout: listPayloadLayout,
     invalid: [
       { sourceKey: SOURCE_B.key, sourceLabel: SOURCE_B.label, dir: 'C:/x/skills/legacy', path: 'C:/x/skills/legacy/SKILL.md', code: 'bad-key', key: 'disableModelInvocation', message: '使用了已废弃的 camelCase 键 disableModelInvocation' },
       { sourceKey: SOURCE_A.key, sourceLabel: SOURCE_A.label, dir: 'C:/x/skills/old', path: 'C:/x/skills/old.md', code: 'parse', message: 'frontmatter 缺少结束分隔符 ---' },
@@ -122,10 +125,11 @@ body { background:#0f1115; }
   window.fetch = (url, options) => {
     const target = String(url);
     if (target.includes('.list')) return json(listPayload);
+    if (target.includes('.layout')) { const body = options && options.body ? JSON.parse(options.body) : {}; const next = { version: 1, groups: body.groups || listPayloadLayout.groups, assignments: body.assignments || listPayloadLayout.assignments, order: body.order || listPayloadLayout.order }; return json({ ok: true, layout: next }); }
     if (target.includes('.status')) return json({ ok: true, counts: {}, items: statusItems });
     if (target.includes('.detail')) return json(detail);
     if (target.includes('.compare')) {
-      if (target.includes('path=')) return json({ path: 'SKILL.md', status: 'changed', diff: { text: '--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,3 +1,3 @@\n name: code-review\n-description: 旧描述\n+description: 审查代码变更，按严重度输出可执行的修改清单\n whenToUse: 提交前' } });
+      if (target.includes('path=')) return json({ path: 'SKILL.md', status: 'changed', diff: '--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,4 +1,4 @@\n ---\n name: code-review\n-description: 旧描述\n+description: 审查代码变更，按严重度输出可执行的修改清单\n whenToUse: 提交前\n ---' });
       return json({ added: [{ path: 'references/severity.md' }], changed: [{ path: 'SKILL.md' }], removed: [{ path: 'notes.md' }], identical: false });
     }
     if (target.includes('.policy')) return json({ ok: true, policyLabel: '启用', note: '' });

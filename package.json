@@ -1,9 +1,32 @@
 {
-  "name": "@local/dsh-skill-manager",
-  "version": "0.3.0",
-  "private": true,
+  "name": "@cnhenaihui/dsh-skill-manager",
+  "version": "0.4.0",
   "type": "module",
-  "description": "DSH 技能管理插件：技能注册、技能介绍、导出 zip 包、版本跟踪、停用/启用（零运行时依赖）",
+  "description": "DSH skill manager: register, inspect, export/import zip packages, content-addressed version history with diff and rollback, per-skill enable/disable. Zero runtime dependencies. / DSH 技能管理插件：技能注册、介绍、导出导入 zip、版本跟踪（快照/对比/回滚）、停用启用。",
+  "license": "MIT",
+  "author": "cnhenaihui",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cnhenaihui/dsh-skill-manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cnhenaihui/dsh-skill-manager/issues"
+  },
+  "homepage": "https://github.com/cnhenaihui/dsh-skill-manager#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
+    "cordis",
+    "skill",
+    "skills",
+    "skill-manager",
+    "version-history"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./client.js",
@@ -17,9 +40,11 @@
     "scripts/",
     "test/",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "engines": {
+    "node": ">=20.0.0",
     "dsh": ">=0.2.0-rc.2 <0.3.0"
   },
   "dsh": {
